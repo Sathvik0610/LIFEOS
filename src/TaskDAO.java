@@ -58,14 +58,15 @@ public class TaskDAO {
     }
 
 
-    // ===== ADD TASK =====
-    public void addTask(int userId, String title, java.sql.Date date,
-                        int startHour, int startMin,
+    // ===== ADD TASK (UPDATED WITH CATEGORY & DESCRIPTION) =====
+    public void addTask(int userId, String title, String category, String description, 
+                        java.sql.Date date, int startHour, int startMin,
                         int endHour, int endMin) {
 
+        // Added CATEGORY and DESCRIPTION to the SQL query
         String query = "INSERT INTO TASKS " +
-                "(TASK_ID, USER_ID, TITLE, START_TIME, START_HOUR, START_MIN, END_HOUR, END_MIN, STATUS) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')";
+                "(TASK_ID, USER_ID, TITLE, CATEGORY, DESCRIPTION, START_TIME, START_HOUR, START_MIN, END_HOUR, END_MIN, STATUS) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')";
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(query)) {
@@ -75,11 +76,13 @@ public class TaskDAO {
             ps.setInt(1, taskId);
             ps.setInt(2, userId);
             ps.setString(3, title);
-            ps.setDate(4, date);
-            ps.setInt(5, startHour);
-            ps.setInt(6, startMin);
-            ps.setInt(7, endHour);
-            ps.setInt(8, endMin);
+            ps.setString(4, category);       // NEW
+            ps.setString(5, description);    // NEW
+            ps.setDate(6, date);
+            ps.setInt(7, startHour);
+            ps.setInt(8, startMin);
+            ps.setInt(9, endHour);
+            ps.setInt(10, endMin);
 
             ps.executeUpdate();
 
@@ -89,12 +92,15 @@ public class TaskDAO {
     }
 
 
-    // ===== COMMON MAPPER (CLEAN CODE) =====
+    // ===== COMMON MAPPER (UPDATED) =====
     private Task mapTask(ResultSet rs) throws SQLException {
+        // Updated to extract CATEGORY and DESCRIPTION and pass them to the Task constructor
         return new Task(
                 rs.getInt("TASK_ID"),
                 rs.getInt("USER_ID"),
                 rs.getString("TITLE"),
+                rs.getString("CATEGORY"),      // NEW
+                rs.getString("DESCRIPTION"),   // NEW
                 rs.getDate("START_TIME"),
                 rs.getInt("START_HOUR"),
                 rs.getInt("START_MIN"),
@@ -103,6 +109,7 @@ public class TaskDAO {
         );
     }
 
+    // ===== DELETE TASK =====
     public void deleteTask(int taskId) {
         String query = "DELETE FROM TASKS WHERE TASK_ID = ?";
         try (Connection conn = DBConnection.getConnection();
@@ -113,6 +120,36 @@ public class TaskDAO {
 
         }
         catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // ===== UPDATE TASK =====
+    public void updateTask(int taskId, String title, String category, String description, 
+                           java.sql.Date date, int startHour, int startMin,
+                           int endHour, int endMin) {
+
+        String query = "UPDATE TASKS SET " +
+                "TITLE = ?, CATEGORY = ?, DESCRIPTION = ?, START_TIME = ?, " +
+                "START_HOUR = ?, START_MIN = ?, END_HOUR = ?, END_MIN = ? " +
+                "WHERE TASK_ID = ?";
+
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(query)) {
+
+            ps.setString(1, title);
+            ps.setString(2, category);
+            ps.setString(3, description);
+            ps.setDate(4, date);
+            ps.setInt(5, startHour);
+            ps.setInt(6, startMin);
+            ps.setInt(7, endHour);
+            ps.setInt(8, endMin);
+            ps.setInt(9, taskId);
+
+            ps.executeUpdate();
+
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }

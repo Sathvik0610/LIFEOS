@@ -4,57 +4,66 @@ import java.awt.event.*;
 import java.time.*;
 import java.util.*;
 import java.util.List;
+import java.util.Date;
 
 public class TimePanel extends JPanel {
 
     private JPanel calendarPanel;
     private JPanel dayViewPanel;
     private JLabel monthLabel;
-    private TaskDAO taskDAO = new TaskDAO(); // Assumes your TaskDAO class exists
-    private int userId = 1;
+    private TaskDAO taskDAO = new TaskDAO(); 
+    
+    // --- CHANGED: No longer hardcoded to 1 ---
+    private int userId;
     private int selectedDay = -1;
 
     private YearMonth currentMonth = YearMonth.now();
     private Map<LocalDate, List<Task>> monthCache = new HashMap<>();
     private javax.swing.Timer refreshTimer; 
 
-    // --- Task color palette and helper ---
     private Color[] taskColors = new Color[] {
-        new Color(66,133,244),
-        new Color(52,168,83),
-        new Color(251,188,5),
-        new Color(234,67,53),
-        new Color(120,94,240),
-        new Color(0,172,193)
+        new Color(66,133,244),   // 0: Default / Blue
+        new Color(52,168,83),    // 1: Work / Green
+        new Color(251,188,5),    // 2: Personal / Yellow
+        new Color(234,67,53),    // 3: Important / Red
+        new Color(120,94,240),   // 4: Study / Purple
+        new Color(0,172,193)     // 5: Meeting / Teal
     };
 
+    // --- CHANGED: Now uses the actual category string to determine color ---
     private Color getTaskColor(Task t) {
-        int idx = Math.abs(t.taskId) % taskColors.length;
-        return taskColors[idx];
+        if (t.category == null) return taskColors[0];
+        
+        switch (t.category) {
+            case "Work":      return taskColors[1];
+            case "Personal":  return taskColors[2];
+            case "Important": return taskColors[3];
+            case "Study":     return taskColors[4];
+            case "Meeting":   return taskColors[5];
+            default:          return taskColors[0];
+        }
     }
 
-    public TimePanel() {
-        setLayout(new BorderLayout());
+    // --- CHANGED: Constructor accepts the user ID ---
+    public TimePanel(int loggedInUserId) {
+        this.userId = loggedInUserId;
         
-        // Add content directly
+        setLayout(new BorderLayout());
         add(buildContent(), BorderLayout.CENTER);
-
         loadCalendar();
 
         LocalDate today = LocalDate.now();
         selectedDay = today.getDayOfMonth();
         showEvents(selectedDay);
 
-        // Auto refresh current time line every 30 seconds
         refreshTimer = new javax.swing.Timer(30000, e -> {
             if (selectedDay != -1 && dayViewPanel != null) {
-                dayViewPanel.repaint(); // Smoothly redraw the red line
+                dayViewPanel.repaint(); 
             }
         });
         refreshTimer.start();
     }
 
-    // Prevent memory leak when panel is removed from screen
     @Override
     public void removeNotify() {
         super.removeNotify();
@@ -73,11 +82,10 @@ public class TimePanel extends JPanel {
         calendarPanel = new JPanel();
         calendarPanel.setBackground(new Color(248,249,250));
 
-        // --- OVERLAY FIX: Draw current time directly on the panel ---
         dayViewPanel = new JPanel() {
             @Override
             public void paint(Graphics g) {
-                super.paint(g); // Draw standard hours and tasks first
+                super.paint(g); 
                 
                 LocalDate today = LocalDate.now();
                 if (selectedDay != -1 && currentMonth.atDay(selectedDay).equals(today)) {
@@ -94,31 +102,24 @@ public class TimePanel extends JPanel {
                     int safeWidth = Math.max(0, width - leftOffset - 10);
                     Color redColor = new Color(234, 67, 53);
 
-                    // 1. Line
                     g2.setColor(redColor);
                     g2.fillRect(leftOffset, globalY, safeWidth, 2);
 
-                    // 2. Dot
                     g2.setColor(Color.WHITE);
                     g2.fillOval(leftOffset - 5, globalY - 5, 10, 10);
                     g2.setColor(redColor);
                     g2.fillOval(leftOffset - 4, globalY - 4, 8, 8);
 
-                    // 3. Floating Time Text
                     String timeStr = String.format("%02d:%02d", now.getHour(), now.getMinute());
                     g2.setFont(new Font("Segoe UI", Font.BOLD, 12));
                     FontMetrics fm = g2.getFontMetrics();
                     int textWidth = fm.stringWidth(timeStr);
                     
                     g2.setColor(redColor);
-                    
-                    // Nudge the text right-aligned, just before the dot
                     int textX = 52 - textWidth; 
-                    // Center the text vertically perfectly on the red line
                     int textY = globalY + (fm.getAscent() / 2) - 1; 
 
                     g2.drawString(timeStr, textX, textY);
-
                     g2.dispose();
                 }
             }
@@ -130,7 +131,6 @@ public class TimePanel extends JPanel {
         scroll.setBorder(null);
         scroll.getVerticalScrollBar().setUnitIncrement(16);
 
-        // --- BUTTON VISIBILITY FIX: Prevent panels from stretching infinitely ---
         calendarPanel.setMinimumSize(new Dimension(300, 300));
         scroll.setMinimumSize(new Dimension(300, 300));
 
@@ -165,28 +165,19 @@ public class TimePanel extends JPanel {
         create.setBackground(new Color(66,133,244));
         create.setForeground(Color.WHITE);
         create.setFocusPainted(false);
-        
-        // --- MAC/OS THEME FIX: Force button colors to render ---
         create.setOpaque(true); 
         create.setBorderPainted(false); 
-        
         create.setBorder(BorderFactory.createEmptyBorder(8,16,8,16));
         create.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        create.addActionListener(e -> addTask());
+        
+        create.addActionListener(e -> openTaskDialog(null));
 
         JPanel right = new JPanel();
         right.setBackground(Color.WHITE);
         right.add(create);
 
-        prev.addActionListener(e -> {
-            currentMonth = currentMonth.minusMonths(1);
-            loadCalendar();
-        });
-
-        next.addActionListener(e -> {
-            currentMonth = currentMonth.plusMonths(1);
-            loadCalendar();
-        });
+        prev.addActionListener(e -> { currentMonth = currentMonth.minusMonths(1); loadCalendar(); });
+        next.addActionListener(e -> { currentMonth = currentMonth.plusMonths(1); loadCalendar(); });
 
         top.add(center, BorderLayout.CENTER);
         top.add(right, BorderLayout.EAST);
@@ -203,8 +194,6 @@ public class TimePanel extends JPanel {
 
     private void loadCalendar() {
         calendarPanel.removeAll();
-        
-        // --- 7-DAY FIX: Use 0 rows so Swing forces exactly 7 columns ---
         calendarPanel.setLayout(new GridLayout(0, 7, 12, 12));
 
         monthLabel.setText(currentMonth.getMonth() + " " + currentMonth.getYear());
@@ -249,12 +238,8 @@ public class TimePanel extends JPanel {
             });
 
             btn.addMouseListener(new MouseAdapter() {
-                public void mouseEntered(MouseEvent e) {
-                    if (d != selectedDay) btn.setBackground(new Color(245,247,250));
-                }
-                public void mouseExited(MouseEvent e) {
-                    if (d != selectedDay) btn.setBackground(Color.WHITE);
-                }
+                public void mouseEntered(MouseEvent e) { if (d != selectedDay) btn.setBackground(new Color(245,247,250)); }
+                public void mouseExited(MouseEvent e) { if (d != selectedDay) btn.setBackground(Color.WHITE); }
             });
 
             LocalDate today = LocalDate.now();
@@ -300,11 +285,7 @@ public class TimePanel extends JPanel {
                 int slotStart = h * 60;
                 int startOffset = Math.max(0, taskStart - slotStart);
                 int endOffset = Math.min(60, taskEnd - slotStart);
-                int segmentDuration = endOffset - startOffset;
-
-                globalMaxSegment.put(t.taskId,
-                    Math.max(globalMaxSegment.getOrDefault(t.taskId, 0), segmentDuration)
-                );
+                globalMaxSegment.put(t.taskId, Math.max(globalMaxSegment.getOrDefault(t.taskId, 0), endOffset - startOffset));
             }
         }
 
@@ -319,23 +300,22 @@ public class TimePanel extends JPanel {
                     int leftCol = 64;
                     g.setColor(new Color(245,247,250));
                     g.fillRect(0, 0, leftCol, getHeight());
+                    
                     g.setColor(new Color(220,220,220));
-                    g.drawLine(leftCol, 0, leftCol, getHeight());
-                    g.setColor(new Color(210,210,210));
-                    g.drawLine(leftCol, getHeight()-2, getWidth(), getHeight()-2);
+                    g.drawLine(leftCol, 0, leftCol, getHeight()); 
+                    
+                    g.setColor(new Color(230,230,230)); 
+                    g.drawLine(leftCol, getHeight() - 1, getWidth(), getHeight() - 1); 
                 }
             };
             slot.setPreferredSize(new Dimension(300, slotHeight));
             slot.setMaximumSize(new Dimension(Integer.MAX_VALUE, slotHeight));
             slot.setBackground(Color.WHITE);
-            slot.setBorder(BorderFactory.createMatteBorder(0,0,1,0,new Color(230,230,230)));
 
             JLabel timeLabel = new JLabel(String.format("%02d:00", hour));
             timeLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
             timeLabel.setForeground(new Color(120,120,120));
-            int labelHeight = 18;
-            int yCenter = (slotHeight - labelHeight) / 2;
-            timeLabel.setBounds(8, yCenter, 52, labelHeight);
+            timeLabel.setBounds(8, (slotHeight - 18) / 2, 52, 18);
             timeLabel.setOpaque(false);
             slot.add(timeLabel);
 
@@ -351,11 +331,8 @@ public class TimePanel extends JPanel {
 
                 int totalWidth = dayViewPanel.getWidth();
                 if (totalWidth <= 0) totalWidth = dayViewPanel.getPreferredSize().width;
-
                 int leftOffset = 64;
-                int availableWidth = totalWidth - leftOffset;
-                if (availableWidth <= 0) availableWidth = 300;
-
+                int availableWidth = Math.max(totalWidth - leftOffset, 300);
                 int colWidth = availableWidth / Math.max(cols, 1);
 
                 for (int i = 0; i < active.size(); i++) {
@@ -364,40 +341,51 @@ public class TimePanel extends JPanel {
                     int taskStart = t.startHour * 60 + t.startMin;
                     int taskEnd = t.endHour * 60 + t.endMin;
                     int slotStart = hour * 60;
+                    int slotEnd = slotStart + 60;
 
                     int startOffset = Math.max(0, taskStart - slotStart);
                     int endOffset = Math.min(60, taskEnd - slotStart);
 
-                    int y = (int)(startOffset * pixelsPerMinute);
-                    if (t.startHour == hour) y = Math.max(0, y - Math.min(6, startOffset/2));
+                    int y = (int) Math.round(startOffset * pixelsPerMinute);
+                    int height = (int) Math.round((endOffset - startOffset) * pixelsPerMinute);
 
-                    int height = (int)((endOffset - startOffset) * pixelsPerMinute);
-                    if (t.startHour == hour) height = Math.max(height, 35);
+                    if (t.startHour == hour && t.endHour == hour) {
+                        height = Math.max(height, 35);
+                        if (y + height > slotHeight) {
+                            y = slotHeight - height;
+                        }
+                    } else if (t.startHour == hour) {
+                        height = slotHeight - y;
+                    } else if (t.endHour == hour) {
+                        y = 0;
+                        height = (int) Math.round(endOffset * pixelsPerMinute);
+                    } else {
+                        y = 0;
+                        height = slotHeight;
+                    }
 
                     Color c = getTaskColor(t);
 
                     JPanel cell = new JPanel(new BorderLayout());
                     cell.setOpaque(true);
-                    cell.setLayout(new BorderLayout());
                     cell.setBackground(c);
-                    cell.setBorder(BorderFactory.createMatteBorder(1,1,1,1,new Color(255,255,255,80)));
-                    leftOffset = 64; 
-                    cell.setBounds(leftOffset + i * colWidth + 6, y, colWidth - 12, Math.max(height, 12));
+                    cell.setCursor(new Cursor(Cursor.HAND_CURSOR)); 
+                    
+                    int topBorder = (taskStart < slotStart) ? 0 : 1;
+                    int bottomBorder = (taskEnd > slotEnd) ? 0 : 1;
+                    
+                    cell.setBorder(BorderFactory.createMatteBorder(topBorder, 1, bottomBorder, 1, new Color(255,255,255,80)));
+                    
+                    int seamlessOverlap = (taskEnd > slotEnd) ? 1 : 0;
+                    cell.setBounds(leftOffset + i * colWidth + 6, y, colWidth - 12, height + seamlessOverlap);
 
-                    int segmentDuration = endOffset - startOffset;
-                    boolean showLabel = (segmentDuration == globalMaxSegment.get(t.taskId))
-                                        && !labelShown.contains(t.taskId);
-
-                    if (showLabel) {
+                    if (endOffset - startOffset == globalMaxSegment.get(t.taskId) && !labelShown.contains(t.taskId)) {
                         labelShown.add(t.taskId);
                         JLabel titleLbl = new JLabel(t.title);
                         titleLbl.setForeground(Color.WHITE);
                         titleLbl.setFont(new Font("Segoe UI", Font.BOLD, 13));
 
-                        JLabel timeLbl = new JLabel(
-                            String.format("%02d:%02d-%02d:%02d",
-                            t.startHour, t.startMin, t.endHour, t.endMin)
-                        );
+                        JLabel timeLbl = new JLabel(String.format("%02d:%02d-%02d:%02d", t.startHour, t.startMin, t.endHour, t.endMin));
                         timeLbl.setForeground(new Color(255,255,255,200));
                         timeLbl.setFont(new Font("Segoe UI", Font.PLAIN, 11));
 
@@ -405,95 +393,217 @@ public class TimePanel extends JPanel {
                         textPanel.setOpaque(false);
                         textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
                         textPanel.setBorder(BorderFactory.createEmptyBorder(4,0,0,0));
-
                         textPanel.add(titleLbl);
                         textPanel.add(timeLbl);
-
                         cell.add(textPanel, BorderLayout.CENTER);
                     }
 
-                    cell.setToolTipText("Right-click to delete");
+                    cell.setToolTipText("<html><b>" + t.title + "</b><br>Click to View/Edit</html>");
+                    
                     cell.addMouseListener(new MouseAdapter() {
                         public void mouseClicked(MouseEvent e) {
-                            if (SwingUtilities.isRightMouseButton(e)) {
-                                int confirm = JOptionPane.showConfirmDialog(
-                                    TimePanel.this,
-                                    "Delete \"" + t.title + "\" (" +
-                                    String.format("%02d:%02d-%02d:%02d", t.startHour, t.startMin, t.endHour, t.endMin) + ")?",
-                                    "Confirm Delete",
-                                    JOptionPane.YES_NO_OPTION,
-                                    JOptionPane.PLAIN_MESSAGE
-                                );
-                                if (confirm == JOptionPane.YES_OPTION) {
-                                    taskDAO.deleteTask(t.taskId);
-                                    loadCalendar();
-                                    showEvents(selectedDay);
-                                    revalidate();
-                                }
-                            }
+                            openTaskDialog(t); 
                         }
                     });
-
                     layer.add(cell);
                 }
-
-                int width = slot.getWidth();
-                if (width == 0) width = slot.getPreferredSize().width;
+                int width = slot.getWidth() == 0 ? slot.getPreferredSize().width : slot.getWidth();
                 layer.setBounds(0, 0, width, slotHeight);
                 slot.add(layer);
             }
-
             dayViewPanel.add(slot);
         }
-
         dayViewPanel.revalidate();
         dayViewPanel.repaint();
     }
 
-    private void addTask() {
+    private void openTaskDialog(Task existingTask) {
         if (selectedDay == -1) {
-            JOptionPane.showMessageDialog(this, "Select a day first");
+            JOptionPane.showMessageDialog(this, "Select a day first", "Notice", JOptionPane.PLAIN_MESSAGE);
             return;
         }
 
+        boolean isEditMode = (existingTask != null);
+        String dialogTitle = isEditMode ? "Edit Task" : "Create Task";
+
+        Window parentWindow = SwingUtilities.getWindowAncestor(this);
+        JDialog dialog = new JDialog((Frame) parentWindow, dialogTitle, true);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(450, 450);
+        dialog.setLocationRelativeTo(this);
+        dialog.setResizable(false);
+
+        JPanel formPanel = new JPanel(new GridBagLayout());
+        formPanel.setBackground(Color.WHITE);
+        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 10, 20));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(10, 10, 10, 10);
+        gbc.weightx = 1.0;
+
+        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.2;
+        formPanel.add(new JLabel("Title:"), gbc);
         JTextField titleField = new JTextField();
+        if (isEditMode) titleField.setText(existingTask.title);
+        gbc.gridx = 1; gbc.weightx = 0.8;
+        formPanel.add(titleField, gbc);
 
-        String[] times = new String[96];
-        for (int i = 0; i < 96; i++) {
-            int h = i / 4;
-            int m = (i % 4) * 15;
-            times[i] = String.format("%02d:%02d", h, m);
+        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.2;
+        formPanel.add(new JLabel("Category:"), gbc);
+        String[] categories = {"Default", "Work", "Personal", "Important", "Study", "Meeting"};
+        JComboBox<String> categoryBox = new JComboBox<>(categories);
+        categoryBox.setBackground(Color.WHITE);
+        if (isEditMode && existingTask.category != null) categoryBox.setSelectedItem(existingTask.category);
+        gbc.gridx = 1; gbc.weightx = 0.8;
+        formPanel.add(categoryBox, gbc);
+
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(new Date()); 
+
+        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.2;
+        formPanel.add(new JLabel("Start Time:"), gbc);
+        SpinnerDateModel startModel = new SpinnerDateModel();
+        JSpinner startSpinner = new JSpinner(startModel);
+        JSpinner.DateEditor startEditor = new JSpinner.DateEditor(startSpinner, "HH:mm");
+        startSpinner.setEditor(startEditor);
+        
+        if (isEditMode) {
+            cal.set(Calendar.HOUR_OF_DAY, existingTask.startHour);
+            cal.set(Calendar.MINUTE, existingTask.startMin);
+            startSpinner.setValue(cal.getTime());
+        } else {
+            startSpinner.setValue(Date.from(LocalTime.of(9, 0).atDate(LocalDate.now()).atZone(ZoneId.systemDefault()).toInstant()));
+        }
+        gbc.gridx = 1; gbc.weightx = 0.8;
+        formPanel.add(startSpinner, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.2;
+        formPanel.add(new JLabel("End Time:"), gbc);
+        SpinnerDateModel endModel = new SpinnerDateModel();
+        JSpinner endSpinner = new JSpinner(endModel);
+        JSpinner.DateEditor endEditor = new JSpinner.DateEditor(endSpinner, "HH:mm");
+        endSpinner.setEditor(endEditor);
+        
+        if (isEditMode) {
+            cal.set(Calendar.HOUR_OF_DAY, existingTask.endHour);
+            cal.set(Calendar.MINUTE, existingTask.endMin);
+            endSpinner.setValue(cal.getTime());
+        } else {
+            endSpinner.setValue(Date.from(LocalTime.of(10, 0).atDate(LocalDate.now()).atZone(ZoneId.systemDefault()).toInstant()));
+        }
+        gbc.gridx = 1; gbc.weightx = 0.8;
+        formPanel.add(endSpinner, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0.2;
+        gbc.anchor = GridBagConstraints.NORTH;
+        formPanel.add(new JLabel("Notes:"), gbc);
+        JTextArea descArea = new JTextArea(4, 20);
+        descArea.setLineWrap(true);
+        descArea.setWrapStyleWord(true);
+        descArea.setBorder(BorderFactory.createLineBorder(Color.LIGHT_GRAY));
+        if (isEditMode && existingTask.description != null) descArea.setText(existingTask.description);
+        
+        JScrollPane descScroll = new JScrollPane(descArea);
+        gbc.gridx = 1; gbc.weightx = 0.8;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weighty = 1.0; 
+        formPanel.add(descScroll, gbc);
+
+        JPanel buttonPanel = new JPanel(new BorderLayout());
+        buttonPanel.setBackground(Color.WHITE);
+        buttonPanel.setBorder(BorderFactory.createEmptyBorder(0, 20, 20, 20));
+
+        JPanel leftActionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        leftActionPanel.setBackground(Color.WHITE);
+        if (isEditMode) {
+            JButton deleteBtn = new JButton("Delete");
+            deleteBtn.setForeground(new Color(234, 67, 53));
+            deleteBtn.setFocusPainted(false);
+            deleteBtn.setContentAreaFilled(false);
+            deleteBtn.setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 10));
+            deleteBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            
+            deleteBtn.addActionListener(e -> {
+                int confirm = JOptionPane.showConfirmDialog(
+                    dialog, 
+                    "Are you sure you want to delete this task?", 
+                    "Delete Task", 
+                    JOptionPane.YES_NO_OPTION, 
+                    JOptionPane.PLAIN_MESSAGE
+                );
+                if (confirm == JOptionPane.YES_OPTION) {
+                    taskDAO.deleteTask(existingTask.taskId);
+                    loadCalendar();
+                    showEvents(selectedDay);
+                    dialog.dispose();
+                }
+            });
+            leftActionPanel.add(deleteBtn);
         }
 
-        JComboBox<String> startBox = new JComboBox<>(times);
-        JComboBox<String> endBox = new JComboBox<>(times);
+        JPanel rightActionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        rightActionPanel.setBackground(Color.WHITE);
 
-        JPanel panel = new JPanel(new GridLayout(3,2,10,10));
-        panel.add(new JLabel("Title:")); panel.add(titleField);
-        panel.add(new JLabel("Start:")); panel.add(startBox);
-        panel.add(new JLabel("End:")); panel.add(endBox);
+        JButton cancelBtn = new JButton("Cancel");
+        cancelBtn.setFocusPainted(false);
+        cancelBtn.addActionListener(e -> dialog.dispose());
 
-        int res = JOptionPane.showConfirmDialog(this, panel, "Create Task", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-        if (res != JOptionPane.OK_OPTION) return;
+        JButton saveBtn = new JButton(isEditMode ? "Save Changes" : "Create Task");
+        saveBtn.setBackground(new Color(66,133,244));
+        saveBtn.setForeground(Color.WHITE);
+        saveBtn.setFocusPainted(false);
+        saveBtn.setOpaque(true);
+        saveBtn.setBorderPainted(false);
+        
+        saveBtn.addActionListener(e -> {
+            String title = titleField.getText().trim();
+            String description = descArea.getText().trim();
+            String category = (String) categoryBox.getSelectedItem();
+            
+            Date startTime = (Date) startSpinner.getValue();
+            Date endTime = (Date) endSpinner.getValue();
 
-        String title = titleField.getText().trim();
-        String s = (String) startBox.getSelectedItem();
-        String e = (String) endBox.getSelectedItem();
+            Calendar startCal = Calendar.getInstance();
+            startCal.setTime(startTime);
+            int sh = startCal.get(Calendar.HOUR_OF_DAY);
+            int sm = startCal.get(Calendar.MINUTE);
 
-        int sh = Integer.parseInt(s.split(":")[0]);
-        int sm = Integer.parseInt(s.split(":")[1]);
-        int eh = Integer.parseInt(e.split(":")[0]);
-        int em = Integer.parseInt(e.split(":")[1]);
+            Calendar endCal = Calendar.getInstance();
+            endCal.setTime(endTime);
+            int eh = endCal.get(Calendar.HOUR_OF_DAY);
+            int em = endCal.get(Calendar.MINUTE);
 
-        if (title.isEmpty() || (eh < sh || (eh == sh && em <= sm))) {
-            JOptionPane.showMessageDialog(this, "Invalid input");
-            return;
-        }
+            if (title.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog, "Please enter a title.", "Error", JOptionPane.PLAIN_MESSAGE);
+                return;
+            }
+            if (eh < sh || (eh == sh && em <= sm)) {
+                JOptionPane.showMessageDialog(dialog, "End time must be after Start time.", "Error", JOptionPane.PLAIN_MESSAGE);
+                return;
+            }
 
-        LocalDate d = currentMonth.atDay(selectedDay);
-        taskDAO.addTask(userId, title, java.sql.Date.valueOf(d), sh, sm, eh, em);
+            LocalDate d = currentMonth.atDay(selectedDay);
 
-        loadCalendar();
-        showEvents(selectedDay);
+            if (isEditMode) {
+                taskDAO.updateTask(existingTask.taskId, title, category, description, java.sql.Date.valueOf(d), sh, sm, eh, em);
+            } else {
+                taskDAO.addTask(userId, title, category, description, java.sql.Date.valueOf(d), sh, sm, eh, em);
+            }
+
+            loadCalendar();
+            showEvents(selectedDay);
+            dialog.dispose();
+        });
+
+        rightActionPanel.add(cancelBtn);
+        rightActionPanel.add(saveBtn);
+
+        buttonPanel.add(leftActionPanel, BorderLayout.WEST);
+        buttonPanel.add(rightActionPanel, BorderLayout.EAST);
+
+        dialog.add(formPanel, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+
+        dialog.setVisible(true);
     }
 }
