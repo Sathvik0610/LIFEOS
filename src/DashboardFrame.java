@@ -6,6 +6,7 @@ public class DashboardFrame extends JFrame {
 
     private JPanel mainPanel;
     private int currentUserId;
+    private HealthPanel cachedHealthPanel;
 
     // We keep class-level references to the buttons so we can change their colors later
     private JButton timeBtn, healthBtn, financeBtn, profileBtn;
@@ -147,10 +148,16 @@ public class DashboardFrame extends JFrame {
     }
 
     private void showHealth() {
-        mainPanel.removeAll();
-        mainPanel.setLayout(new BorderLayout()); 
-        mainPanel.add(new HealthPanel(currentUserId), BorderLayout.CENTER);
-        refresh();
+    mainPanel.removeAll();
+    mainPanel.setLayout(new BorderLayout()); 
+    
+    // Only create it once so the checkbox marks are preserved
+    if (cachedHealthPanel == null) {
+        cachedHealthPanel = new HealthPanel(currentUserId);
+    }
+    
+    mainPanel.add(cachedHealthPanel, BorderLayout.CENTER);
+    refresh();
     }
 
     private void showFinance() {

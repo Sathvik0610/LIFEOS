@@ -147,6 +147,8 @@ public class FinancePanel extends JPanel {
         addBtn.setFont(new Font("Segoe UI", Font.BOLD, 14));
         addBtn.setBackground(PRIMARY_BLUE);
         addBtn.setForeground(WHITE);
+        addBtn.setOpaque(true); 
+        addBtn.setBorderPainted(false);
         addBtn.setFocusPainted(false);
         addBtn.setPreferredSize(new Dimension(400, 50));
         addBtn.addActionListener(e -> {
@@ -464,6 +466,8 @@ public class FinancePanel extends JPanel {
         JButton addAccountBtn = new JButton("+ Add Account");
         addAccountBtn.setBackground(PRIMARY_BLUE);
         addAccountBtn.setForeground(WHITE);
+        addAccountBtn.setOpaque(true);
+        addAccountBtn.setBorderPainted(false);
         addAccountBtn.setFocusPainted(false);
         addAccountBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         addAccountBtn.addActionListener(e -> openAccountDialog(null));

@@ -237,6 +237,47 @@ public class HealthDAO {
         } catch (Exception e) { e.printStackTrace(); }
     }
 
+/**
+ * Saves or removes a medication dose record for today.
+ */
+public void toggleMedicationDose(int userId, int medId, int doseIndex, boolean taken) {
+    Connection conn = DBConnection.getConnection();
+    if (conn == null) return;
+
+    String sql = taken ? 
+        "INSERT INTO MEDICATION_LOGS (USER_ID, MED_ID, DOSE_INDEX, LOG_DATE) VALUES (?, ?, ?, CURRENT_DATE) ON CONFLICT DO NOTHING" :
+        "DELETE FROM MEDICATION_LOGS WHERE USER_ID = ? AND MED_ID = ? AND DOSE_INDEX = ? AND LOG_DATE = CURRENT_DATE";
+
+    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setInt(1, userId);
+        ps.setInt(2, medId);
+        ps.setInt(3, doseIndex);
+        ps.executeUpdate();
+    } catch (SQLException e) { e.printStackTrace(); }
+}
+
+/**
+ * Returns a set of dose indices already taken today for a specific medication.
+ */
+public Set<Integer> getTakenDosesToday(int userId, int medId) {
+    Set<Integer> takenDoses = new HashSet<>();
+    String query = "SELECT DOSE_INDEX FROM MEDICATION_LOGS WHERE USER_ID = ? AND MED_ID = ? AND LOG_DATE = CURRENT_DATE";
+    
+    Connection conn = DBConnection.getConnection();
+    if (conn == null) return takenDoses;
+
+    try (PreparedStatement ps = conn.prepareStatement(query)) {
+        ps.setInt(1, userId);
+        ps.setInt(2, medId);
+        try (ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                takenDoses.add(rs.getInt("DOSE_INDEX"));
+            }
+        }
+    } catch (SQLException e) { e.printStackTrace(); }
+    return takenDoses;
+}
+
     public void deleteMedication(int medId) {
         Connection conn = DBConnection.getConnection();
         if (conn == null) return;

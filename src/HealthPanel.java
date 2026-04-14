@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Date;
 import java.util.Calendar;
 
@@ -457,20 +458,96 @@ private JPanel buildManualEntrySection(JPanel listPanel) {
     }
 
     private void refreshMedicationList(JPanel listPanel) {
-        listPanel.removeAll();
-        for (HealthDAO.Medication med : dao.getMedications(userId)) {
-            JPanel card = new JPanel(new BorderLayout()); card.setBackground(Color.WHITE);
-            card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(235, 237, 240), 1, true), BorderFactory.createEmptyBorder(15, 20, 15, 20)));
-            card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 90));
-            JLabel title = new JLabel(med.name + " (" + med.dosage + ")"); title.setFont(new Font("Segoe UI", 1, 16));
-            JLabel detail = new JLabel("Every " + med.gap + " hours"); detail.setForeground(Color.GRAY);
-            JPanel txt = new JPanel(new GridLayout(2, 1)); txt.setOpaque(false); txt.add(title); txt.add(detail);
-            JButton del = new JButton("X"); del.setForeground(Color.RED); del.setContentAreaFilled(false); del.setBorderPainted(false);
-            del.addActionListener(e -> { dao.deleteMedication(med.medId); refreshMedicationList(listPanel); });
-            card.add(txt, BorderLayout.CENTER); card.add(del, BorderLayout.EAST); listPanel.add(card); listPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+    listPanel.removeAll();
+    
+    // Fetch the list of medications for the current user
+    for (HealthDAO.Medication med : dao.getMedications(userId)) {
+        
+        // --- CARD SETUP ---
+        JPanel card = new JPanel(new BorderLayout()); 
+        card.setBackground(Color.WHITE);
+        card.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(235, 237, 240), 1, true), 
+            BorderFactory.createEmptyBorder(15, 20, 15, 20)));
+        
+        // Slightly taller to fit the checkbox row
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 130));
+
+        JPanel mainContent = new JPanel();
+        mainContent.setLayout(new BoxLayout(mainContent, BoxLayout.Y_AXIS));
+        mainContent.setOpaque(false);
+
+        // --- 1. MEDICATION INFO ---
+        JLabel title = new JLabel(med.name + " (" + med.dosage + ")"); 
+        title.setFont(new Font("Segoe UI", Font.BOLD, 17));
+        
+        JLabel detail = new JLabel("Interval: Every " + med.gap + " hours"); 
+        detail.setForeground(Color.GRAY);
+        detail.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        
+        mainContent.add(title);
+        mainContent.add(detail);
+        mainContent.add(Box.createRigidArea(new Dimension(0, 10))); // Spacing
+
+        // --- 2. DYNAMIC DOSE TRACKER (DB-BACKED) ---
+        // Fetch which doses were already taken today from Neon
+        Set<Integer> takenDoses = dao.getTakenDosesToday(userId, med.medId);
+
+        // Logic: 24 hours / interval = doses per day
+        int dosesPerDay = Math.max(1, 24 / med.gap); 
+        
+        JPanel doseBoxPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
+        doseBoxPanel.setOpaque(false);
+        
+        for (int i = 1; i <= dosesPerDay; i++) {
+            final int doseIndex = i; // Needed for the listener
+            JCheckBox doseCheck = new JCheckBox("Dose " + i);
+            doseCheck.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+            doseCheck.setOpaque(false); // Mac visual fix
+
+            // Restore the saved state from the database
+            if (takenDoses.contains(doseIndex)) {
+                doseCheck.setSelected(true);
+            }
+
+            // Save state to the database instantly when toggled
+            doseCheck.addActionListener(e -> {
+                dao.toggleMedicationDose(userId, med.medId, doseIndex, doseCheck.isSelected());
+            });
+
+            doseBoxPanel.add(doseCheck);
         }
-        listPanel.revalidate(); listPanel.repaint();
+        mainContent.add(doseBoxPanel);
+
+        // --- 3. DELETE BUTTON ---
+        JButton del = new JButton("✕"); 
+        del.setForeground(Color.RED); 
+        del.setContentAreaFilled(false); 
+        del.setBorderPainted(false);
+        del.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        del.setToolTipText("Remove medication");
+        
+        del.addActionListener(e -> { 
+            int confirm = JOptionPane.showConfirmDialog(this, 
+                "Remove " + med.name + " from your regimen?", "Confirm Delete", 
+                JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                dao.deleteMedication(med.medId); //
+                refreshMedicationList(listPanel); 
+            }
+        });
+        
+        card.add(mainContent, BorderLayout.CENTER); 
+        card.add(del, BorderLayout.EAST); 
+        
+        listPanel.add(card); 
+        listPanel.add(Box.createRigidArea(new Dimension(0, 10)));
     }
+    
+    // Refresh the UI container
+    listPanel.revalidate(); 
+    listPanel.repaint();
+}
 
     // --- HELPERS ---
     private double calculateTotalKJ(HealthDAO.HealthRecord record) {
